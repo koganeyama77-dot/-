@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>直進アシスト</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+    #video { width: 100vw; height: 100vh; object-fit: cover; }
+    /* ガイドライン（画面中央の直線） */
+    #guide-line {
+      position: absolute; top: 0; left: 50%; width: 4px; height: 100%;
+      background: rgba(0, 255, 0, 0.8); transform: translateX(-50%);
+    }
+    /* 情報表示パネル */
+    #info {
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.7); color: #fff; padding: 15px 25px;
+      border-radius: 10px; text-align: center; font-size: 20px; width: 80%;
+    }
+    button {
+      position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+      padding: 15px 30px; font-size: 18px; font-weight: bold;
+      background: #28a745; color: white; border: none; border-radius: 30px;
+    }
+  </style>
+</head>
+<body>
+
+  <video id="video" autoplay playsinline></video>
+  <div id="guide-line"></div>
+  
+  <div id="info">
+    <div id="angle">ズレ: 0.0°</div>
+    <div id="direction" style="font-size: 14px; color: #ccc;">基準未設定</div>
+  </div>
+
+  <button onclick="setBaseHeading()">直進基準をセット</button>
+
+  <script>
+    let baseHeading = null;
+    let currentHeading = 0;
+
+    // 1. カメラの起動
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(stream => { document.getElementById('video').srcObject = stream; })
+      .catch(err => alert("カメラアクセスエラー: " + err));
+
+    // 2. iOSの傾き・方位センサー許可取得とイベント登録
+    function initSensor() {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then(state => {
+          if (state === 'granted') {
+            window.addEventListener('deviceorientation', handleOrientation, true);
+          } else { alert("センサーの利用が拒否されました"); }
+        });
+      } else {
+        window.addEventListener('deviceorientation', handleOrientation, true);
+      }
+    }
+
+    function handleOrientation(event) {
+      // webkitCompassHeadingでコンパス方位を取得（iOS対応）
+      if (event.webkitCompassHeading !== undefined) {
+        currentHeading = event.webkitCompassHeading;
+      } else if (event.alpha !== null) {
+        currentHeading = 360 - event.alpha;
+      }
+
+      if (baseHeading !== null) {
+        let diff = currentHeading - baseHeading;
+        if (diff > 180) diff -= 360;
+        if (diff < -180) diff += 360;
+
+        const angleElem = document.getElementById('angle');
+        const lineElem = document.getElementById('guide-line');
+        
+        angleElem.innerText = `ズレ: ${diff.toFixed(1)}°`;
+
+        // ズレに応じてラインの色を変更（1度以上ズレたら赤）
+        if (Math.abs(diff) > 1.0) {
+          lineElem.style.background = "rgba(255, 0, 0, 0.8)";
+          document.getElementById('direction').innerText = diff > 0 ? "← 左へ切る" : "右へ切る →";
+        } else {
+          lineElem.style.background = "rgba(0, 255, 0, 0.8)";
+          document.getElementById('direction').innerText = "直進中";
+        }
+      }
+    }
+
+    // 3. ボタンを押した時の方位を基準として保存
+    function setBaseHeading() {
+      initSensor(); // 初回クリック時にセンサー許可をリクエスト
+      baseHeading = currentHeading;
+      alert("現在の向きを直進基準に設定しました！");
+    }
+  </script>
+</body>
+</html>
